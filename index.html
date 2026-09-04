@@ -241,12 +241,28 @@ footer{max-width:1280px;margin:0 auto;padding:10px 20px 30px;font-size:11.5px;co
 
 <!-- ============ EFETIVO ============ -->
 <section class="view" id="v-efetivo" hidden>
-  <div class="card" style="margin-bottom:14px">
+  <div class="grid" style="margin-bottom:14px">
+    <div class="card c4">
+      <div class="card-h"><h2 id="o-title">Novo operador</h2></div>
+      <div class="sub">Cadastro fixo, igual ao de equipamentos. Quem está aqui aparece na lista ao lançar a parada.</div>
+      <div class="form">
+        <div class="f f12"><label>Nome</label><input id="o-nome" placeholder="Nome completo" autocomplete="off"></div>
+        <div class="f f6"><label>Matrícula</label><input id="o-mat" placeholder="Ex.: 10457" autocomplete="off"></div>
+        <div class="f f6"><label>Função</label><select id="o-func"></select></div>
+        <div class="f f12 actions"><button class="btn" id="o-save">Salvar</button><button class="btn ghost" id="o-cancel" hidden>Cancelar</button><span class="hint" id="o-msg"></span></div>
+      </div>
+    </div>
+    <div class="card c8">
+      <div class="card-h"><h2>Efetivo cadastrado</h2><span class="sub" id="o-count"></span></div>
+      <div class="tw"><table id="o-tb"></table></div>
+    </div>
+  </div>
+  <div class="card">
     <div class="card-h"><h2>Acompanhamento por operador / motorista</h2><span class="sub" id="ef-per"></span></div>
-    <div class="sub">Paradas registradas com o operador que estava no equipamento. Corretivas repetidas com o mesmo operador em equipamentos diferentes indicam operação, não máquina.</div>
+    <div class="sub">Corretivas repetidas com o mesmo operador em equipamentos diferentes indicam operação, não máquina.</div>
     <div class="tw"><table id="ef-tb"></table></div>
   </div>
-  <div class="eq-cards" id="ef-cards"></div>
+  <div class="eq-cards" id="ef-cards" style="margin-top:14px"></div>
 </section>
 
 <!-- ============ LANÇAR PARADA ============ -->
@@ -257,7 +273,7 @@ footer{max-width:1280px;margin:0 auto;padding:10px 20px 30px;font-size:11.5px;co
       <div class="sub">Preencha no pátio, pelo celular. A parada entra no mês da data de início; se atravessar o mês, o app divide em dois registros.</div>
       <div class="form" id="frm">
         <div class="f f6"><label>Equipamento</label><select id="p-tag"></select></div>
-        <div class="f f6"><label>Operador / motorista no equipamento</label><input id="p-oper" list="oper-list" placeholder="Quem estava operando" autocomplete="off"><datalist id="oper-list"></datalist></div>
+        <div class="f f6"><label>Operador / motorista no equipamento</label><select id="p-oper"></select><span class="hint">Cadastre o efetivo na aba Efetivo.</span></div>
         <div class="f f6"><label>Quem lança</label><input id="p-por" placeholder="Seu nome" autocomplete="name"></div>
         <div class="f f12"><label>Motivo</label><div class="motivos" id="p-motivos"></div></div>
         <div class="f f12" id="p-item-wrap" hidden><label>Item da corretiva</label><select id="p-item"></select><span class="hint">É esse campo que alimenta o rastreio. Escolha o sistema que falhou, não o sintoma.</span></div>
@@ -362,6 +378,7 @@ const MOTIVOS = [
 const MCOR = Object.fromEntries(MOTIVOS.map(m=>[m.k,m]));
 const ITENS = ['Sistema hidráulico','Sistema elétrico','Motor','Transmissão / embreagem','Freios','Pneus / rodado','Material rodante','Ar condicionado','Chassi / estrutura','Caçamba / implemento','Bomba d\'água','Sistema de arrefecimento','Outros'];
 const TIPOS = ['Caminhão Basculante','Caminhão Betoneira','Caminhão Carroceria','Caminhão Munck','Caminhão Pipa','Cavalo Mecânico','Cavalo Mecânico + Prancha','Escavadeira Hidráulica','Escavadeira Hidráulica (com rompedor)','Motoniveladora','Pá Carregadeira','Retroescavadeira','Rolo Compactador','Trator de Esteira','Trator Agrícola','Plataforma Elevatória','Gerador'];
+const FUNCOES = ['Motorista','Operador de Máquina','Operador de Munck','Ajudante','Outros'];
 const META = 85;
 
 /* =================== utilidades =================== */
@@ -376,6 +393,7 @@ const diasMes = m => new Date(+m.slice(0,4), +m.slice(5,7), 0).getDate();
 const ultDia = m => m+'-'+String(diasMes(m)).padStart(2,'0');
 const addMes = (m,n) => { const d=new Date(+m.slice(0,4), +m.slice(5,7)-1+n, 1); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); };
 const esc = s => String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const norm = t => String(t||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/\s+/g,' ').trim();
 const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 function toast(t){ const e=$('#toast'); e.textContent=t; e.classList.add('show'); clearTimeout(e._t); e._t=setTimeout(()=>e.classList.remove('show'),2400); }
 
@@ -389,15 +407,15 @@ function diasParada(p, mes){
 }
 
 /* =================== estado / persistência =================== */
-const S = { eq:{}, fech:{}, mes:null, mesFim:null, modo:'mes', view:'painel', rtag:'', ftag:'', editTag:null, motivo:null, backend:'local' };
+const S = { eq:{}, ope:{}, fech:{}, mes:null, mesFim:null, modo:'mes', view:'painel', rtag:'', ftag:'', editTag:null, editOp:null, motivo:null, backend:'local' };
 let db = null;
 const LS_KEY = 'marka-disponibilidade-v1';
 
 function loadLocal(){
-  try { const raw = localStorage.getItem(LS_KEY); if (raw){ const o=JSON.parse(raw); S.eq=o.eq||{}; S.fech=o.fech||{}; return true; } } catch(e){}
+  try { const raw = localStorage.getItem(LS_KEY); if (raw){ const o=JSON.parse(raw); S.eq=o.eq||{}; S.ope=o.ope||{}; S.fech=o.fech||{}; return true; } } catch(e){}
   return false;
 }
-function saveLocal(){ try { localStorage.setItem(LS_KEY, JSON.stringify({eq:S.eq, fech:S.fech})); } catch(e){} }
+function saveLocal(){ try { localStorage.setItem(LS_KEY, JSON.stringify({eq:S.eq, ope:S.ope, fech:S.fech})); } catch(e){} }
 
 /* ---------- Supabase (opcional, para uso compartilhado) ---------- */
 const SB_KEY='marka-disponibilidade-sb';
@@ -430,8 +448,8 @@ async function sbDel(tipo,id){
   if(!r.ok) throw new Error('HTTP '+r.status);
 }
 function sbApply(rows){
-  S.eq={}; S.fech={};
-  rows.forEach(r=>{ if(r.tipo==='eq') S.eq[r.dados.tag]=r.dados; else if(r.tipo==='fe') S.fech[r.dados.tag+'_'+r.dados.mes]=r.dados; });
+  S.eq={}; S.ope={}; S.fech={};
+  rows.forEach(r=>{ if(r.tipo==='eq') S.eq[r.dados.tag]=r.dados; else if(r.tipo==='op') S.ope[r.dados.id]=r.dados; else if(r.tipo==='fe') S.fech[r.dados.tag+'_'+r.dados.mes]=r.dados; });
 }
 async function sbSync(silencioso){
   if(!SB) return;
@@ -451,6 +469,18 @@ async function delEq(tag){
   delete S.eq[tag]; render();
   if (db) { try { await db.doc('equipamentos/'+tag).delete(); } catch(err){ toast('Falha ao excluir: '+err.message); } }
   else if (SB) { try { await sbDel('eq',tag); } catch(err){ toast('Falha ao excluir na nuvem: '+err.message); } saveLocal(); }
+  else saveLocal();
+}
+async function putOp(o){
+  S.ope[o.id]=o; render();
+  if (db) { try { await db.doc('operadores/'+o.id).set(o); } catch(err){ toast('Falha ao salvar: '+err.message); } }
+  else if (SB) { try { await sbPut('op',o.id,o); } catch(err){ toast('Falha ao salvar na nuvem: '+err.message); } saveLocal(); }
+  else saveLocal();
+}
+async function delOp(id){
+  delete S.ope[id]; render();
+  if (db) { try { await db.doc('operadores/'+id).delete(); } catch(err){ toast('Falha ao excluir: '+err.message); } }
+  else if (SB) { try { await sbDel('op',id); } catch(err){ toast('Falha ao excluir na nuvem: '+err.message); } saveLocal(); }
   else saveLocal();
 }
 function getFech(tag, mes){ return S.fech[tag+'_'+mes] || {tag, mes, hInicio:null, hFim:null, paradas:[]}; }
@@ -488,6 +518,10 @@ async function connect(){
   db.collection('equipamentos').onSnapshot(snap => {
     S.eq = {}; snap.docs.forEach(d => { S.eq[d.id] = d.data(); });
     sync.className='sync on'; sync.innerHTML='<i></i><span>sincronizado</span>';
+    render();
+  }, onErr);
+  db.collection('operadores').onSnapshot(snap => {
+    S.ope = {}; snap.docs.forEach(d => { S.ope[d.id] = d.data(); });
     render();
   }, onErr);
   db.collection('fechamentos').onSnapshot(snap => {
@@ -555,7 +589,8 @@ function paradasPeriodo(filtro){
   return out.sort((a,b)=>b.ini.localeCompare(a.ini));
 }
 function corretivasPeriodo(){ const per=periodo(); return { ini:per.ini, fim:per.fim, lista: paradasPeriodo(p=>p.motivo==='Manutenção Corretiva') }; }
-function operadores(){ const s=new Set(); Object.values(S.fech).forEach(f=>(f.paradas||[]).forEach(p=>{ if(p.oper) s.add(p.oper); })); return [...s].sort(); }
+function operadores(soAtivos){ return Object.values(S.ope).filter(o=>!soAtivos||o.ativo!==false).sort((a,b)=>a.nome.localeCompare(b.nome)); }
+function paradasDoOperador(nome){ let n=0; Object.values(S.fech).forEach(f=>(f.paradas||[]).forEach(p=>{ if(p.oper===nome) n++; })); return n; }
 
 /* =================== render =================== */
 function render(){
@@ -700,7 +735,9 @@ function renderParada(R){
   $('#p-item-wrap').hidden=S.motivo!=='Manutenção Corretiva';
   if(!$('#p-ini').value) $('#p-ini').value = S.mes===hoje().slice(0,7)? hoje() : S.mes+'-01';
   try{ if(!$('#p-por').value) $('#p-por').value=localStorage.getItem('marka-disp-por')||''; }catch(e){}
-  $('#oper-list').innerHTML=operadores().map(o=>`<option value="${esc(o)}">`).join('');
+  const so=$('#p-oper'), cur2=so.value, ativos=operadores(true);
+  so.innerHTML='<option value="">Não informado</option>'+ativos.map(o=>`<option value="${esc(o.nome)}">${esc(o.nome)}${o.mat?' · '+esc(o.mat):''}</option>`).join('');
+  if(cur2) so.value=cur2;
   const lista=paradasPeriodo();
   $('#p-count').textContent=`${lista.length} registro(s) · ${R.per.rotulo}`;
   $('#p-list').innerHTML=lista.length?lista.map(p=>`<div class="row"><span class="chip" style="background:${MCOR[p.motivo]?.hex||'#5F8A2E'}">${esc(p.motivo.replace('Manutenção ',''))}</span>
@@ -816,15 +853,53 @@ $('#fi-tag').onchange=e=>{S.ftag=e.target.value; render();};
 /* ---------- efetivo ---------- */
 function renderEfetivo(){
   const per=periodo(); $('#ef-per').textContent=per.rotulo;
-  const lista=paradasPeriodo(); const ops={};
-  lista.forEach(p=>{const k=p.oper||'Não informado'; const o=ops[k]=ops[k]||{n:0,cor:0,dias:0,dcor:0,tags:{},itens:{}}; o.n++; o.dias+=p.dias; o.tags[p.tag]=(o.tags[p.tag]||0)+1; if(p.motivo==='Manutenção Corretiva'){o.cor++; o.dcor+=p.dias; const it=p.item||'Não informado'; o.itens[it]=(o.itens[it]||0)+1;}});
-  const rows=Object.entries(ops).sort((a,b)=>(a[0]==='Não informado')-(b[0]==='Não informado')||b[1].cor-a[1].cor||b[1].dias-a[1].dias);
-  $('#ef-tb').innerHTML=`<thead><tr><th>Operador / motorista</th><th class="n">Paradas</th><th class="n">Corretivas</th><th class="n">Dias parados</th><th class="n">Dias em corretiva</th><th>Equipamentos</th><th>Item mais frequente</th></tr></thead><tbody>`+(rows.map(([k,o])=>{
-    const top=Object.entries(o.itens).sort((a,b)=>b[1]-a[1])[0]; const tags=Object.entries(o.tags).sort((a,b)=>b[1]-a[1]).map(t=>`<span class="tag" style="font-size:13px">${esc(t[0])}</span>${t[1]>1?'<span class="num" style="color:var(--ink-3)">×'+t[1]+'</span>':''}`).join(' ');
-    return `<tr${k==='Não informado'?' style="color:var(--ink-3)"':''}><td><b>${esc(k)}</b></td><td class="n">${o.n}</td><td class="n"><b>${o.cor}</b></td><td class="n">${o.dias}</td><td class="n">${o.dcor}</td><td>${tags}</td><td>${top?esc(top[0])+' <span class="num" style="color:var(--ink-3)">('+top[1]+'×)</span>':'–'}</td></tr>`;}).join('')||'<tr><td colspan="7" class="pend">Nenhuma parada no período. Informe o operador ao lançar a parada.</td></tr>')+'</tbody>';
+  if(!$('#o-func').options.length) $('#o-func').innerHTML=FUNCOES.map(f=>`<option>${f}</option>`).join('');
+  // ---- cadastro fixo ----
+  const ops=operadores();
+  $('#o-count').textContent=`${ops.filter(o=>o.ativo!==false).length} ativo(s) de ${ops.length}`;
+  $('#o-tb').innerHTML=`<thead><tr><th>Nome</th><th>Matrícula</th><th>Função</th><th class="n">Paradas</th><th>Status</th><th></th></tr></thead><tbody>`+(ops.map(o=>{
+    const n=paradasDoOperador(o.nome);
+    return `<tr><td><b>${esc(o.nome)}</b></td><td>${esc(o.mat||'')}</td><td>${esc(o.func||'')}</td><td class="n">${n}</td>
+      <td>${o.ativo===false?'<span class="badge b-mut">inativo</span>':'<span class="badge b-ok"><i></i>ativo</span>'}</td>
+      <td style="white-space:nowrap"><button class="btn ghost sm" data-oed="${esc(o.id)}">Editar</button> <button class="btn ghost sm" data-otg="${esc(o.id)}">${o.ativo===false?'Reativar':'Inativar'}</button> <button class="btn danger sm" data-orm="${esc(o.id)}">Excluir</button></td></tr>`;
+  }).join('')||'<tr><td colspan="6" class="pend">Nenhum operador cadastrado. Cadastre o efetivo ao lado.</td></tr>')+'</tbody>';
+  $('#o-tb').querySelectorAll('[data-oed]').forEach(b=>b.onclick=()=>{const o=S.ope[b.dataset.oed]; S.editOp=o.id; $('#o-nome').value=o.nome; $('#o-mat').value=o.mat||''; $('#o-func').value=o.func||FUNCOES[0]; $('#o-title').textContent='Editar operador'; $('#o-cancel').hidden=false; $('#o-nome').scrollIntoView({block:'center'});});
+  $('#o-tb').querySelectorAll('[data-otg]').forEach(b=>b.onclick=()=>{const o=S.ope[b.dataset.otg]; putOp({...o,ativo:o.ativo===false});});
+  $('#o-tb').querySelectorAll('[data-orm]').forEach(b=>b.onclick=()=>{const o=S.ope[b.dataset.orm]; const n=paradasDoOperador(o.nome);
+    if(n){ toast(`${o.nome} tem ${n} parada(s) lançada(s). Inative em vez de excluir.`); return; }
+    delOp(o.id); toast(o.nome+' excluído');});
+  // ---- acompanhamento no período ----
+  const lista=paradasPeriodo(); const agg={};
+  lista.forEach(p=>{const k=p.oper||'Não informado'; const a=agg[k]=agg[k]||{n:0,cor:0,dias:0,dcor:0,tags:{},itens:{}}; a.n++; a.dias+=p.dias; a.tags[p.tag]=(a.tags[p.tag]||0)+1; if(p.motivo==='Manutenção Corretiva'){a.cor++; a.dcor+=p.dias; const it=p.item||'Não informado'; a.itens[it]=(a.itens[it]||0)+1;}});
+  const rows=Object.entries(agg).sort((a,b)=>(a[0]==='Não informado')-(b[0]==='Não informado')||b[1].cor-a[1].cor||b[1].dias-a[1].dias);
+  $('#ef-tb').innerHTML=`<thead><tr><th>Operador / motorista</th><th>Função</th><th class="n">Paradas</th><th class="n">Corretivas</th><th class="n">Dias parados</th><th class="n">Dias em corretiva</th><th>Equipamentos</th><th>Item mais frequente</th></tr></thead><tbody>`+(rows.map(([k,a])=>{
+    const cad=ops.find(o=>o.nome===k);
+    const top=Object.entries(a.itens).sort((x,y)=>y[1]-x[1])[0];
+    const tags=Object.entries(a.tags).sort((x,y)=>y[1]-x[1]).map(t=>`<span class="tag" style="font-size:13px">${esc(t[0])}</span>${t[1]>1?'<span class="num" style="color:var(--ink-3)">×'+t[1]+'</span>':''}`).join(' ');
+    return `<tr${k==='Não informado'?' style="color:var(--ink-3)"':''}><td><b>${esc(k)}</b>${cad&&cad.mat?' <span class="num" style="color:var(--ink-3);font-size:12px">'+esc(cad.mat)+'</span>':''}</td><td>${esc(cad?.func||'')}</td><td class="n">${a.n}</td><td class="n"><b>${a.cor}</b></td><td class="n">${a.dias}</td><td class="n">${a.dcor}</td><td>${tags}</td><td>${top?esc(top[0])+' <span class="num" style="color:var(--ink-3)">('+top[1]+'×)</span>':'–'}</td></tr>`;}).join('')||'<tr><td colspan="8" class="pend">Nenhuma parada no período.</td></tr>')+'</tbody>';
   const semOp=lista.filter(p=>!p.oper).length;
-  $('#ef-cards').innerHTML= semOp? `<div class="note" style="grid-column:1/-1">${semOp} parada(s) sem operador informado no período. Sem esse campo, o acompanhamento por efetivo fica incompleto.</div>` : '';
+  const semCad=[...new Set(lista.map(p=>p.oper).filter(Boolean))].filter(n=>!ops.some(o=>o.nome===n));
+  let avisos='';
+  if(semOp) avisos+=`<div class="note" style="grid-column:1/-1">${semOp} parada(s) sem operador informado no período.</div>`;
+  if(semCad.length) avisos+=`<div class="note" style="grid-column:1/-1;border-left-color:var(--crit)">${semCad.length} operador(es) aparecem em paradas mas não estão no cadastro: ${semCad.map(esc).join(', ')}. Cadastre para padronizar os nomes.</div>`;
+  $('#ef-cards').innerHTML=avisos;
 }
+function resetOpForm(){S.editOp=null; $('#o-nome').value=''; $('#o-mat').value=''; $('#o-title').textContent='Novo operador'; $('#o-cancel').hidden=true; $('#o-msg').textContent='';}
+$('#o-cancel').onclick=resetOpForm;
+$('#o-save').onclick=()=>{
+  const nome=$('#o-nome').value.trim(), mat=$('#o-mat').value.trim(), func=$('#o-func').value, msg=$('#o-msg');
+  if(nome.length<3) return msg.textContent='Informe o nome completo.';
+  const dup=Object.values(S.ope).find(o=>norm(o.nome)===norm(nome) && o.id!==S.editOp);
+  if(dup) return msg.textContent='Já existe operador com esse nome.';
+  const dupm=mat&&Object.values(S.ope).find(o=>norm(o.mat)===norm(mat) && o.id!==S.editOp);
+  if(dupm) return msg.textContent='Matrícula já usada por '+dupm.nome+'.';
+  const prev=S.editOp?S.ope[S.editOp]:null;
+  if(prev && prev.nome!==nome){ // renomear: acompanha as paradas já lançadas
+    Object.values(S.fech).forEach(f=>{ if((f.paradas||[]).some(p=>p.oper===prev.nome)) putFech({...f,paradas:f.paradas.map(p=>p.oper===prev.nome?{...p,oper:nome}:p)}); });
+  }
+  putOp({id: prev?prev.id:uid(), nome, mat:mat||null, func, ativo: prev?prev.ativo!==false:true});
+  toast((prev?'Atualizado ':'Cadastrado ')+nome); resetOpForm();
+};
 
 /* ---------- sincronização ---------- */
 function renderSync(){
@@ -834,7 +909,7 @@ function renderSync(){
   if(S.backend==='db') $('#sy-status').innerHTML=box('var(--ok)','Banco do artefato Claude','Compartilhado entre quem abre este artefato dentro da sua organização no Claude. Nada a configurar.');
   else if(SB) $('#sy-status').innerHTML=box(S.erro?'var(--crit)':'var(--ok)', S.erro?'Conectado, mas com erro':'Compartilhado via Supabase', S.erro?esc(S.erro):`Todos que abrirem o link veem os mesmos lançamentos. Atualiza sozinho a cada 25 segundos.<br><span style="color:var(--ink-3)">${esc(SB.url)}</span>`);
   else $('#sy-status').innerHTML=box('var(--gold)','Salvo só neste navegador','Funciona offline, mas cada pessoa tem a própria base e nada é compartilhado. Limpar os dados do navegador apaga tudo. Conecte um banco abaixo para a equipe usar junto.');
-  $('#sy-status').innerHTML+=`<div class="sub" style="margin-top:6px">Base atual: ${nEq} equipamento(s) e ${nFe} mês(es) de fechamento.</div>`;
+  $('#sy-status').innerHTML+=`<div class="sub" style="margin-top:6px">Base atual: ${nEq} equipamento(s), ${Object.keys(S.ope).length} operador(es) e ${nFe} mês(es) de fechamento.</div>`;
   if(SB){ $('#sy-url').value=SB.url; $('#sy-key').value=SB.key; $('#sy-off').hidden=false; } else $('#sy-off').hidden=true;
   $('#sy-url').disabled=S.backend==='db'; $('#sy-key').disabled=S.backend==='db'; $('#sy-save').disabled=S.backend==='db';
 }
@@ -851,10 +926,10 @@ $('#sy-save').onclick=async()=>{ const c=lerCfg(); const m=$('#sy-msg'); if(!c.u
   try{ await testar(c); }catch(e){ m.textContent='Falhou: '+e.message+' — rode o SQL ao lado antes de conectar.'; return; }
   SB=c; try{ localStorage.setItem(SB_KEY,JSON.stringify(c)); }catch(e){}
   S.backend='supabase'; $('#aviso').hidden=true;
-  const locais=[...Object.values(S.eq),...Object.values(S.fech)];
+  const locais=[...Object.values(S.eq),...Object.values(S.ope),...Object.values(S.fech)];
   try{ sbApply(await sbGetAll()); }catch(e){}
-  if(locais.length && !Object.keys(S.eq).length && !Object.keys(S.fech).length && confirm(`Enviar os ${locais.length} registro(s) deste navegador para o banco compartilhado?`)){
-    for(const e of locais){ try{ e.mes ? await sbPut('fe',e.tag+'_'+e.mes,e) : await sbPut('eq',e.tag,e); }catch(err){} }
+  if(locais.length && !Object.keys(S.eq).length && !Object.keys(S.ope).length && !Object.keys(S.fech).length && confirm(`Enviar os ${locais.length} registro(s) deste navegador para o banco compartilhado?`)){
+    for(const e of locais){ try{ e.mes ? await sbPut('fe',e.tag+'_'+e.mes,e) : (e.nome ? await sbPut('op',e.id,e) : await sbPut('eq',e.tag,e)); }catch(err){} }
   }
   await sbSync(); clearInterval(S.timer); S.timer=setInterval(()=>sbSync(true),25000);
   m.textContent=''; toast('Conectado ao banco compartilhado'); render();
@@ -862,13 +937,13 @@ $('#sy-save').onclick=async()=>{ const c=lerCfg(); const m=$('#sy-msg'); if(!c.u
 $('#sy-off').onclick=()=>{ if(!confirm('Desconectar? O app volta a salvar só neste navegador. Os dados no banco continuam lá.')) return;
   SB=null; try{ localStorage.removeItem(SB_KEY); }catch(e){} clearInterval(S.timer); S.backend='local'; saveLocal(); marcaSync('','só neste aparelho'); render(); };
 $('#sy-copy').onclick=()=>{ const t=$('#sy-sql'); t.select(); try{ document.execCommand('copy'); toast('SQL copiado'); }catch(e){ toast('Selecione e copie manualmente'); } };
-$('#sy-exp').onclick=()=>{ const blob=new Blob([JSON.stringify({eq:S.eq,fech:S.fech,exportadoEm:new Date().toISOString()},null,1)],{type:'application/json'});
+$('#sy-exp').onclick=()=>{ const blob=new Blob([JSON.stringify({eq:S.eq,ope:S.ope,fech:S.fech,exportadoEm:new Date().toISOString()},null,1)],{type:'application/json'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='disponibilidade-marka-'+hoje()+'.json'; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),2000); $('#sy-bk').textContent='Backup gerado.'; };
 $('#sy-imp-b').onclick=()=>$('#sy-imp').click();
 $('#sy-imp').onchange=e=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader();
-  r.onload=async()=>{ try{ const o=JSON.parse(r.result); const eqs=Object.values(o.eq||{}), fes=Object.values(o.fech||{});
-      if(!confirm(`Restaurar ${eqs.length} equipamento(s) e ${fes.length} fechamento(s)? Registros com o mesmo código são substituídos.`)) return;
-      for(const x of eqs) await putEq(x); for(const x of fes) await putFech(x);
+  r.onload=async()=>{ try{ const o=JSON.parse(r.result); const eqs=Object.values(o.eq||{}), ops=Object.values(o.ope||{}), fes=Object.values(o.fech||{});
+      if(!confirm(`Restaurar ${eqs.length} equipamento(s), ${ops.length} operador(es) e ${fes.length} fechamento(s)? Registros com o mesmo código são substituídos.`)) return;
+      for(const x of eqs) await putEq(x); for(const x of ops) await putOp(x); for(const x of fes) await putFech(x);
       $('#sy-bk').textContent='Restaurado.'; toast('Backup restaurado'); }
     catch(err){ $('#sy-bk').textContent='Arquivo inválido.'; } };
   r.readAsText(f); e.target.value=''; };
@@ -893,6 +968,7 @@ $('#e-cancel').onclick=resetEqForm;
 $('#e-save').onclick=()=>{
   const tag=$('#e-tag').value.trim().toUpperCase(); const msg=$('#e-msg');
   if(!/^[A-Z0-9-]{2,12}$/.test(tag)) return msg.textContent='TAG inválida: use letras e números, ex.: KCB06.';
+  if(!S.editTag && Object.keys(S.eq).some(t=>norm(t)===norm(tag))) return msg.textContent='Já existe equipamento com essa TAG.';
   if(!S.editTag&&S.eq[tag]) return msg.textContent='Já existe equipamento com essa TAG.';
   const prev=S.eq[tag]||{};
   putEq({...prev,tag,tipo:$('#e-tipo').value,obra:$('#e-obra').value,local:$('#e-local').value.trim(),ativo:prev.ativo!==false,medidor:'horimetro',exemplo:false});
