@@ -248,7 +248,7 @@ footer{max-width:1280px;margin:0 auto;padding:10px 20px 30px;font-size:11.5px;co
       <div class="form">
         <div class="f f12"><label>Nome</label><input id="o-nome" placeholder="Nome completo" autocomplete="off"></div>
         <div class="f f6"><label>Matrícula</label><input id="o-mat" placeholder="Ex.: 10457" autocomplete="off"></div>
-        <div class="f f6"><label>Função</label><select id="o-func"></select></div>
+        <div class="f f6"><label>Função</label><input id="o-func" list="dl-func" placeholder="Digite ou escolha" autocomplete="off"><datalist id="dl-func"></datalist><span class="hint">Digite uma nova para criá-la.</span></div>
         <div class="f f12 actions"><button class="btn" id="o-save">Salvar</button><button class="btn ghost" id="o-cancel" hidden>Cancelar</button><span class="hint" id="o-msg"></span></div>
       </div>
     </div>
@@ -317,8 +317,8 @@ footer{max-width:1280px;margin:0 auto;padding:10px 20px 30px;font-size:11.5px;co
       <div class="card-h"><h2 id="e-title">Novo equipamento</h2></div>
       <div class="form">
         <div class="f f12"><label>TAG Marka</label><input id="e-tag" placeholder="Ex.: KCB06" style="text-transform:uppercase"></div>
-        <div class="f f12"><label>Tipo</label><select id="e-tipo"></select></div>
-        <div class="f f12"><label>Obra</label><select id="e-obra"><option>Obras Civis</option><option>Trem de Passageiros</option><option>Compartilhado</option></select></div>
+        <div class="f f12"><label>Tipo</label><input id="e-tipo" list="dl-tipo" placeholder="Digite ou escolha" autocomplete="off"><datalist id="dl-tipo"></datalist><span class="hint">Digite um novo para criá-lo.</span></div>
+        <div class="f f12"><label>Obra</label><input id="e-obra" list="dl-obra" placeholder="Digite ou escolha" autocomplete="off"><datalist id="dl-obra"></datalist><span class="hint">Digite uma nova para criá-la.</span></div>
         <div class="f f12"><label>Local</label><input id="e-local" placeholder="Pátio D, Pátio F, Trem, Bica Corrida..."></div>
         <div class="f f12 actions"><button class="btn" id="e-save">Salvar</button><button class="btn ghost" id="e-cancel" hidden>Cancelar</button><span class="hint" id="e-msg"></span></div>
       </div>
@@ -377,8 +377,9 @@ const MOTIVOS = [
 ];
 const MCOR = Object.fromEntries(MOTIVOS.map(m=>[m.k,m]));
 const ITENS = ['Sistema hidráulico','Sistema elétrico','Motor','Transmissão / embreagem','Freios','Pneus / rodado','Material rodante','Ar condicionado','Chassi / estrutura','Caçamba / implemento','Bomba d\'água','Sistema de arrefecimento','Outros'];
-const TIPOS = ['Caminhão Basculante','Caminhão Betoneira','Caminhão Carroceria','Caminhão Munck','Caminhão Pipa','Cavalo Mecânico','Cavalo Mecânico + Prancha','Escavadeira Hidráulica','Escavadeira Hidráulica (com rompedor)','Motoniveladora','Pá Carregadeira','Retroescavadeira','Rolo Compactador','Trator de Esteira','Trator Agrícola','Plataforma Elevatória','Gerador'];
-const FUNCOES = ['Motorista','Operador de Máquina','Operador de Munck','Ajudante','Outros'];
+const TIPOS_PADRAO = ['Caminhão Basculante','Caminhão Betoneira','Caminhão Carroceria','Caminhão Munck','Caminhão Pipa','Cavalo Mecânico','Cavalo Mecânico + Prancha','Escavadeira Hidráulica','Escavadeira Hidráulica (com rompedor)','Motoniveladora','Pá Carregadeira','Retroescavadeira','Rolo Compactador','Trator de Esteira','Trator Agrícola','Plataforma Elevatória','Gerador'];
+const FUNCOES_PADRAO = ['Motorista','Operador de Máquina','Operador de Munck','Ajudante','Outros'];
+const OBRAS_PADRAO = ['Obras Civis','Trem de Passageiros','Compartilhado'];
 const META = 85;
 
 /* =================== utilidades =================== */
@@ -589,6 +590,25 @@ function paradasPeriodo(filtro){
   return out.sort((a,b)=>b.ini.localeCompare(a.ini));
 }
 function corretivasPeriodo(){ const per=periodo(); return { ini:per.ini, fim:per.fim, lista: paradasPeriodo(p=>p.motivo==='Manutenção Corretiva') }; }
+/* junta lista padrão com os valores já usados, sem repetir por acento/caixa */
+function opcoes(padrao, usados){
+  const out=[], vistos=new Set();
+  [...padrao, ...usados].forEach(v=>{ const t=String(v||'').trim(); if(!t) return; const k=norm(t); if(vistos.has(k)) return; vistos.add(k); out.push(t); });
+  return out.sort((a,b)=>a.localeCompare(b,'pt-BR'));
+}
+function listaFuncoes(){ return opcoes(FUNCOES_PADRAO, Object.values(S.ope).map(o=>o.func)); }
+function listaTipos(){ return opcoes(TIPOS_PADRAO, Object.values(S.eq).map(e=>e.tipo)); }
+function listaObras(){ return opcoes(OBRAS_PADRAO, Object.values(S.eq).map(e=>e.obra)); }
+function preencheDatalist(id, itens){ const d=$(id); if(d) d.innerHTML=itens.map(v=>`<option value="${esc(v)}">`).join(''); }
+/* Motorista de carreta -> Motorista de Carreta, preservando de/da/do/e */
+function tituloPt(t){
+  const min=new Set(['de','da','do','das','dos','e','com','sem','a','o']);
+  return String(t||'').trim().replace(/\s+/g,' ').split(' ').map((p,i)=>{
+    const l=p.toLocaleLowerCase('pt-BR');
+    if(i>0 && min.has(l)) return l;
+    return l.charAt(0).toLocaleUpperCase('pt-BR')+l.slice(1);
+  }).join(' ');
+}
 function operadores(soAtivos){ return Object.values(S.ope).filter(o=>!soAtivos||o.ativo!==false).sort((a,b)=>a.nome.localeCompare(b.nome)); }
 function paradasDoOperador(nome){ let n=0; Object.values(S.fech).forEach(f=>(f.paradas||[]).forEach(p=>{ if(p.oper===nome) n++; })); return n; }
 
@@ -853,7 +873,7 @@ $('#fi-tag').onchange=e=>{S.ftag=e.target.value; render();};
 /* ---------- efetivo ---------- */
 function renderEfetivo(){
   const per=periodo(); $('#ef-per').textContent=per.rotulo;
-  if(!$('#o-func').options.length) $('#o-func').innerHTML=FUNCOES.map(f=>`<option>${f}</option>`).join('');
+  preencheDatalist('#dl-func', listaFuncoes());
   // ---- cadastro fixo ----
   const ops=operadores();
   $('#o-count').textContent=`${ops.filter(o=>o.ativo!==false).length} ativo(s) de ${ops.length}`;
@@ -863,7 +883,7 @@ function renderEfetivo(){
       <td>${o.ativo===false?'<span class="badge b-mut">inativo</span>':'<span class="badge b-ok"><i></i>ativo</span>'}</td>
       <td style="white-space:nowrap"><button class="btn ghost sm" data-oed="${esc(o.id)}">Editar</button> <button class="btn ghost sm" data-otg="${esc(o.id)}">${o.ativo===false?'Reativar':'Inativar'}</button> <button class="btn danger sm" data-orm="${esc(o.id)}">Excluir</button></td></tr>`;
   }).join('')||'<tr><td colspan="6" class="pend">Nenhum operador cadastrado. Cadastre o efetivo ao lado.</td></tr>')+'</tbody>';
-  $('#o-tb').querySelectorAll('[data-oed]').forEach(b=>b.onclick=()=>{const o=S.ope[b.dataset.oed]; S.editOp=o.id; $('#o-nome').value=o.nome; $('#o-mat').value=o.mat||''; $('#o-func').value=o.func||FUNCOES[0]; $('#o-title').textContent='Editar operador'; $('#o-cancel').hidden=false; $('#o-nome').scrollIntoView({block:'center'});});
+  $('#o-tb').querySelectorAll('[data-oed]').forEach(b=>b.onclick=()=>{const o=S.ope[b.dataset.oed]; S.editOp=o.id; $('#o-nome').value=o.nome; $('#o-mat').value=o.mat||''; $('#o-func').value=o.func||''; $('#o-title').textContent='Editar operador'; $('#o-cancel').hidden=false; $('#o-nome').scrollIntoView({block:'center'});});
   $('#o-tb').querySelectorAll('[data-otg]').forEach(b=>b.onclick=()=>{const o=S.ope[b.dataset.otg]; putOp({...o,ativo:o.ativo===false});});
   $('#o-tb').querySelectorAll('[data-orm]').forEach(b=>b.onclick=()=>{const o=S.ope[b.dataset.orm]; const n=paradasDoOperador(o.nome);
     if(n){ toast(`${o.nome} tem ${n} parada(s) lançada(s). Inative em vez de excluir.`); return; }
@@ -884,11 +904,14 @@ function renderEfetivo(){
   if(semCad.length) avisos+=`<div class="note" style="grid-column:1/-1;border-left-color:var(--crit)">${semCad.length} operador(es) aparecem em paradas mas não estão no cadastro: ${semCad.map(esc).join(', ')}. Cadastre para padronizar os nomes.</div>`;
   $('#ef-cards').innerHTML=avisos;
 }
-function resetOpForm(){S.editOp=null; $('#o-nome').value=''; $('#o-mat').value=''; $('#o-title').textContent='Novo operador'; $('#o-cancel').hidden=true; $('#o-msg').textContent='';}
+function resetOpForm(){S.editOp=null; $('#o-nome').value=''; $('#o-mat').value=''; $('#o-func').value=''; $('#o-title').textContent='Novo operador'; $('#o-cancel').hidden=true; $('#o-msg').textContent='';}
 $('#o-cancel').onclick=resetOpForm;
 $('#o-save').onclick=()=>{
-  const nome=$('#o-nome').value.trim(), mat=$('#o-mat').value.trim(), func=$('#o-func').value, msg=$('#o-msg');
+  const nome=$('#o-nome').value.trim(), mat=$('#o-mat').value.trim(), msg=$('#o-msg');
+  let func=tituloPt($('#o-func').value);
   if(nome.length<3) return msg.textContent='Informe o nome completo.';
+  if(!func) return msg.textContent='Informe a função (ex.: Motorista de Carreta).';
+  const funcExist=listaFuncoes().find(f=>norm(f)===norm(func)); if(funcExist) func=funcExist;
   const dup=Object.values(S.ope).find(o=>norm(o.nome)===norm(nome) && o.id!==S.editOp);
   if(dup) return msg.textContent='Já existe operador com esse nome.';
   const dupm=mat&&Object.values(S.ope).find(o=>norm(o.mat)===norm(mat) && o.id!==S.editOp);
@@ -954,24 +977,29 @@ $('#mes-fim').onchange=e=>{ if(e.target.value){S.mesFim=e.target.value; render()
 
 /* ---------- equipamentos ---------- */
 function renderEquip(){
-  if(!$('#e-tipo').options.length) $('#e-tipo').innerHTML=TIPOS.map(t=>`<option>${t}</option>`).join('');
+  preencheDatalist('#dl-tipo', listaTipos()); preencheDatalist('#dl-obra', listaObras());
   const eqs=Object.values(S.eq).sort((a,b)=>a.tag.localeCompare(b.tag));
   $('#e-count').textContent=`${eqs.filter(e=>e.ativo!==false).length} ativo(s) de ${eqs.length}`;
   $('#tb-eq').innerHTML=`<thead><tr><th>TAG</th><th>Tipo</th><th>Obra</th><th>Local</th><th>Status</th><th></th></tr></thead><tbody>`+(eqs.map(e=>`<tr><td class="tag">${esc(e.tag)}</td><td>${esc(e.tipo)}</td><td>${esc(e.obra||'')}</td><td>${esc(e.local||'')}</td><td>${e.ativo===false?'<span class="badge b-mut">inativo</span>':'<span class="badge b-ok"><i></i>ativo</span>'}</td>
     <td style="white-space:nowrap"><button class="btn ghost sm" data-ed="${esc(e.tag)}">Editar</button> <button class="btn ghost sm" data-tg="${esc(e.tag)}">${e.ativo===false?'Reativar':'Inativar'}</button> <button class="btn danger sm" data-rm="${esc(e.tag)}">Excluir</button></td></tr>`).join('')||'<tr><td colspan="6" class="pend">Nenhum equipamento cadastrado.</td></tr>')+'</tbody>';
-  $('#tb-eq').querySelectorAll('[data-ed]').forEach(b=>b.onclick=()=>{const e=S.eq[b.dataset.ed]; S.editTag=e.tag; $('#e-tag').value=e.tag; $('#e-tag').disabled=true; $('#e-tipo').value=e.tipo; $('#e-obra').value=e.obra||'Obras Civis'; $('#e-local').value=e.local||''; $('#e-title').textContent='Editar '+e.tag; $('#e-cancel').hidden=false; $('#e-tag').scrollIntoView({block:'center'});});
+  $('#tb-eq').querySelectorAll('[data-ed]').forEach(b=>b.onclick=()=>{const e=S.eq[b.dataset.ed]; S.editTag=e.tag; $('#e-tag').value=e.tag; $('#e-tag').disabled=true; $('#e-tipo').value=e.tipo; $('#e-obra').value=e.obra||''; $('#e-local').value=e.local||''; $('#e-title').textContent='Editar '+e.tag; $('#e-cancel').hidden=false; $('#e-tag').scrollIntoView({block:'center'});});
   $('#tb-eq').querySelectorAll('[data-tg]').forEach(b=>b.onclick=()=>{const e=S.eq[b.dataset.tg]; putEq({...e,ativo:e.ativo===false,exemplo:false});});
   $('#tb-eq').querySelectorAll('[data-rm]').forEach(b=>b.onclick=()=>{const tag=b.dataset.rm; const n=Object.values(S.fech).filter(f=>f.tag===tag&&((f.paradas||[]).length||f.hInicio!=null)).length; if(n){toast(`${tag} tem ${n} mês(es) com lançamentos. Inative em vez de excluir.`);return;} delEq(tag); toast(tag+' excluído');});
 }
-function resetEqForm(){S.editTag=null; $('#e-tag').value=''; $('#e-tag').disabled=false; $('#e-local').value=''; $('#e-title').textContent='Novo equipamento'; $('#e-cancel').hidden=true; $('#e-msg').textContent='';}
+function resetEqForm(){S.editTag=null; $('#e-tag').value=''; $('#e-tag').disabled=false; $('#e-tipo').value=''; $('#e-obra').value=''; $('#e-local').value=''; $('#e-title').textContent='Novo equipamento'; $('#e-cancel').hidden=true; $('#e-msg').textContent='';}
 $('#e-cancel').onclick=resetEqForm;
 $('#e-save').onclick=()=>{
   const tag=$('#e-tag').value.trim().toUpperCase(); const msg=$('#e-msg');
   if(!/^[A-Z0-9-]{2,12}$/.test(tag)) return msg.textContent='TAG inválida: use letras e números, ex.: KCB06.';
   if(!S.editTag && Object.keys(S.eq).some(t=>norm(t)===norm(tag))) return msg.textContent='Já existe equipamento com essa TAG.';
   if(!S.editTag&&S.eq[tag]) return msg.textContent='Já existe equipamento com essa TAG.';
+  let tipo=tituloPt($('#e-tipo').value), obra=tituloPt($('#e-obra').value);
+  if(!tipo) return msg.textContent='Informe o tipo do equipamento.';
+  if(!obra) return msg.textContent='Informe a obra.';
+  const tE=listaTipos().find(t=>norm(t)===norm(tipo)); if(tE) tipo=tE;
+  const oE=listaObras().find(t=>norm(t)===norm(obra)); if(oE) obra=oE;
   const prev=S.eq[tag]||{};
-  putEq({...prev,tag,tipo:$('#e-tipo').value,obra:$('#e-obra').value,local:$('#e-local').value.trim(),ativo:prev.ativo!==false,medidor:'horimetro',exemplo:false});
+  putEq({...prev,tag,tipo,obra,local:$('#e-local').value.trim(),ativo:prev.ativo!==false,medidor:'horimetro',exemplo:false});
   toast((S.editTag?'Atualizado ':'Cadastrado ')+tag); resetEqForm();
 };
 
