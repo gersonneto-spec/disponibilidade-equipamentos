@@ -143,6 +143,7 @@ tr.total td{font-weight:600;border-top:2px solid var(--gold);background:#FBF7EC}
 .inline-edit.bad{outline:2px solid var(--crit)}
 .list{display:flex;flex-direction:column;gap:8px}
 .row{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;padding:10px 12px;border:1px solid var(--line-2);border-radius:8px;background:var(--bg)}
+.row .acoes{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 .row .d{font-size:12.5px;color:var(--ink-2)}
 .row .d b{color:var(--ink);font-weight:600}
 .row time{font-size:11.5px;color:var(--ink-3)}
@@ -269,7 +270,7 @@ footer{max-width:1280px;margin:0 auto;padding:10px 20px 30px;font-size:11.5px;co
 <section class="view" id="v-parada" hidden>
   <div class="grid">
     <div class="card c7">
-      <div class="card-h"><h2>Nova parada</h2></div>
+      <div class="card-h"><h2 id="p-title">Nova parada</h2></div>
       <div class="sub">Preencha no pátio, pelo celular. A parada entra no mês da data de início; se atravessar o mês, o app divide em dois registros.</div>
       <div class="form" id="frm">
         <div class="f f6"><label>Equipamento</label><select id="p-tag"></select></div>
@@ -280,7 +281,7 @@ footer{max-width:1280px;margin:0 auto;padding:10px 20px 30px;font-size:11.5px;co
         <div class="f f6"><label>Início</label><input type="date" id="p-ini"></div>
         <div class="f f6"><label>Retorno</label><input type="date" id="p-fim"><span class="hint">Deixe em branco se ainda está parado. Conta como parado até hoje.</span></div>
         <div class="f f12"><label>Descrição</label><textarea id="p-desc" rows="2" placeholder="Ex.: mangueira do braço rompida, aguardando peça"></textarea></div>
-        <div class="f f12 actions"><button class="btn" id="p-save">Registrar parada</button><span class="hint" id="p-msg"></span></div>
+        <div class="f f12 actions"><button class="btn" id="p-save">Registrar parada</button><button class="btn ghost" id="p-cancel" hidden>Cancelar edição</button><span class="hint" id="p-msg"></span></div>
       </div>
     </div>
     <div class="card c5">
@@ -380,7 +381,7 @@ const ITENS = ['Sistema hidráulico','Sistema elétrico','Motor','Transmissão /
 const TIPOS_PADRAO = ['Caminhão Basculante','Caminhão Betoneira','Caminhão Carroceria','Caminhão Munck','Caminhão Pipa','Cavalo Mecânico','Cavalo Mecânico + Prancha','Escavadeira Hidráulica','Escavadeira Hidráulica (com rompedor)','Motoniveladora','Pá Carregadeira','Retroescavadeira','Rolo Compactador','Trator de Esteira','Trator Agrícola','Plataforma Elevatória','Gerador'];
 const FUNCOES_PADRAO = ['Motorista','Operador de Máquina','Operador de Munck','Ajudante','Outros'];
 const OBRAS_PADRAO = ['Obras Civis','Trem de Passageiros','Compartilhado'];
-const VERSAO = '2026-09-09c';
+const VERSAO = '2026-09-09d';
 const META = 85;
 
 /* =================== utilidades =================== */
@@ -409,7 +410,7 @@ function diasParada(p, mes){
 }
 
 /* =================== estado / persistência =================== */
-const S = { eq:{}, ope:{}, fech:{}, mes:null, mesFim:null, modo:'mes', view:'painel', rtag:'', ftag:'', editTag:null, editOp:null, motivo:null, backend:'local' };
+const S = { eq:{}, ope:{}, fech:{}, mes:null, mesFim:null, modo:'mes', view:'painel', rtag:'', ftag:'', editTag:null, editOp:null, editPar:null, motivo:null, backend:'local' };
 let db = null;
 const LS_KEY = 'marka-disponibilidade-v1';
 
@@ -763,9 +764,34 @@ function renderParada(R){
   $('#p-count').textContent=`${lista.length} registro(s) · ${R.per.rotulo}`;
   $('#p-list').innerHTML=lista.length?lista.map(p=>`<div class="row"><span class="chip" style="background:${MCOR[p.motivo]?.hex||'#5F8A2E'}">${esc(p.motivo.replace('Manutenção ',''))}</span>
     <div class="d"><b class="tag">${esc(p.tag)}</b> · ${p.item?'<b>'+esc(p.item)+'</b> · ':''}${esc(p.desc||'')}<br><time>${fmtD(p.ini)} → ${p.fim?fmtD(p.fim):'em aberto'} · ${p.dias} dia(s)${p.oper?' · op. '+esc(p.oper):''} · lançou ${esc(p.por||'')}</time></div>
-    <button class="btn danger sm" data-del="${esc(p.tag)}|${esc(p.mes)}|${esc(p.id)}">Excluir</button></div>`).join(''):'<div class="empty">Nenhuma parada lançada neste mês.</div>';
-  $('#p-list').querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{const [tag,mes,id]=b.dataset.del.split('|'); const f=getFech(tag,mes); putFech({...f,paradas:(f.paradas||[]).filter(p=>p.id!==id)}); toast('Parada excluída');});
+    <span class="acoes"><button class="btn sec sm" data-ped="${esc(p.tag)}|${esc(p.mes)}|${esc(p.id)}">Editar</button><button class="btn danger sm" data-del="${esc(p.tag)}|${esc(p.mes)}|${esc(p.id)}">Excluir</button></span></div>`).join(''):'<div class="empty">Nenhuma parada lançada neste mês.</div>';
+  $('#p-list').querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{const [tag,mes,id]=b.dataset.del.split('|'); const f=getFech(tag,mes); putFech({...f,paradas:(f.paradas||[]).filter(p=>p.id!==id)}); if(S.editPar&&S.editPar.id===id) resetParForm(); toast('Parada excluída');});
+  $('#p-list').querySelectorAll('[data-ped]').forEach(b=>b.onclick=()=>{
+    const [tag,mes,id]=b.dataset.ped.split('|'); const f=getFech(tag,mes); const p=(f.paradas||[]).find(x=>x.id===id); if(!p) return;
+    S.editPar={tag,mes,id};
+    $('#p-tag').value=tag; $('#p-oper').value=p.oper||''; if($('#p-oper').value!==(p.oper||'')) $('#p-oper').value='';
+    $('#p-por').value=p.por||$('#p-por').value;
+    S.motivo=p.motivo;
+    $('#p-motivos').querySelectorAll('button').forEach(x=>x.classList.toggle('on',x.dataset.m===p.motivo));
+    $('#p-item-wrap').hidden=S.motivo!=='Manutenção Corretiva';
+    if(p.item) $('#p-item').value=p.item;
+    $('#p-ini').value=p.ini||''; $('#p-fim').value=p.fim||''; $('#p-desc').value=p.desc||'';
+    $('#p-title').textContent='Editar parada · '+tag;
+    $('#p-save').textContent='Salvar alterações';
+    $('#p-cancel').hidden=false; $('#p-msg').textContent='';
+    $('#p-title').scrollIntoView({block:'center'});
+  });
 }
+function resetParForm(){
+  S.editPar=null; S.motivo=null;
+  $('#p-fim').value=''; $('#p-desc').value=''; $('#p-oper').value='';
+  $('#p-motivos').querySelectorAll('button').forEach(x=>x.classList.remove('on'));
+  $('#p-item-wrap').hidden=true;
+  $('#p-title').textContent='Nova parada';
+  $('#p-save').textContent='Registrar parada';
+  $('#p-cancel').hidden=true; $('#p-msg').textContent='';
+}
+$('#p-cancel').onclick=()=>{resetParForm(); render();};
 $('#p-save').onclick=async()=>{
   const tag=$('#p-tag').value, por=$('#p-por').value.trim(), oper=$('#p-oper').value.trim(), ini=$('#p-ini').value, fim=$('#p-fim').value, desc=$('#p-desc').value.trim();
   const msg=$('#p-msg'); msg.textContent='';
@@ -781,9 +807,11 @@ $('#p-save').onclick=async()=>{
   while(a<=end){ const m=a.slice(0,7), u=ultDia(m); const b=end<u?end:u; partes.push({mes:m,ini:a,fim:b}); a=addMes(m,1)+'-01'; }
   if(!partes.length) partes.push({mes:ini.slice(0,7),ini,fim:null});
   if(!fim) partes[partes.length-1].fim=null;
+  const ed=S.editPar;
+  if(ed){ const fo=getFech(ed.tag,ed.mes); await putFech({...fo,paradas:(fo.paradas||[]).filter(x=>x.id!==ed.id)}); }
   for(const pt of partes){ const f=getFech(tag,pt.mes); await putFech({...f,paradas:[...(f.paradas||[]),{id:uid(),motivo:S.motivo,item,ini:pt.ini,fim:pt.fim,desc,oper:oper||null,por,em:new Date().toISOString()}]}); }
-  toast(`Parada registrada em ${tag}${partes.length>1?' ('+partes.length+' meses)':''}`);
-  $('#p-fim').value=''; $('#p-desc').value=''; $('#p-oper').value=''; S.motivo=null;
+  toast(ed?`Parada de ${tag} atualizada`:`Parada registrada em ${tag}${partes.length>1?' ('+partes.length+' meses)':''}`);
+  resetParForm();
   const per=periodo(); if(partes[0].mes<per.ini||partes[0].mes>per.fim){S.modo='mes';S.mes=partes[0].mes;$('#mes').value=S.mes;} render();
 };
 
@@ -1030,6 +1058,5 @@ async function checaAtualizacao(){
   setTimeout(checaAtualizacao, 1500);
 })();
 </script>
-
 </body>
 </html>
