@@ -380,6 +380,7 @@ const ITENS = ['Sistema hidráulico','Sistema elétrico','Motor','Transmissão /
 const TIPOS_PADRAO = ['Caminhão Basculante','Caminhão Betoneira','Caminhão Carroceria','Caminhão Munck','Caminhão Pipa','Cavalo Mecânico','Cavalo Mecânico + Prancha','Escavadeira Hidráulica','Escavadeira Hidráulica (com rompedor)','Motoniveladora','Pá Carregadeira','Retroescavadeira','Rolo Compactador','Trator de Esteira','Trator Agrícola','Plataforma Elevatória','Gerador'];
 const FUNCOES_PADRAO = ['Motorista','Operador de Máquina','Operador de Munck','Ajudante','Outros'];
 const OBRAS_PADRAO = ['Obras Civis','Trem de Passageiros','Compartilhado'];
+const VERSAO = '2026-09-09c';
 const META = 85;
 
 /* =================== utilidades =================== */
@@ -630,7 +631,7 @@ function render(){
   if (S.view==='equip') renderEquip();
   if (S.view==='sync') renderSync();
   const ex = Object.values(S.eq).some(e=>e.exemplo) ? ' · Dados de exemplo carregados para demonstração: substitua pelo cadastro real.' : '';
-  $('#foot').textContent = 'Marka Engenharia · Contrato Vale S.A. TFPM · Disponibilidade = (dias do mês − dias parados) ÷ dias do mês · Horas trabalhadas = horímetro final − inicial' + ex;
+  $('#foot').textContent = 'Marka Engenharia · Contrato Vale S.A. TFPM · Disponibilidade = (dias do mês − dias parados) ÷ dias do mês · Horas trabalhadas = horímetro final − inicial · versão ' + VERSAO + ex;
 }
 
 function renderPainel(R){
@@ -1010,11 +1011,23 @@ const tip=$('#tip');
 document.addEventListener('mousemove',e=>{const t=e.target.closest&&e.target.closest('[data-tip]'); if(!t){tip.style.display='none';return;} tip.innerHTML=t.dataset.tip; tip.style.display='block'; const x=Math.min(e.clientX+14,innerWidth-280), y=e.clientY+16; tip.style.left=x+'px'; tip.style.top=y+'px';});
 document.addEventListener('touchstart',e=>{const t=e.target.closest&&e.target.closest('[data-tip]'); if(!t){tip.style.display='none';return;} tip.innerHTML=t.dataset.tip; tip.style.display='block'; tip.style.left='12px'; tip.style.top=(e.touches[0].clientY+16)+'px';},{passive:true});
 
+async function checaAtualizacao(){
+  try{
+    const r = await fetch(location.pathname + '?cb=' + Date.now(), {cache:'no-store'});
+    if(!r.ok) return;
+    const m = (await r.text()).match(/const VERSAO = '([^']+)'/);
+    if(!m || m[1] === VERSAO) return;
+    if(sessionStorage.getItem('marka-recarga') === m[1]) return;
+    sessionStorage.setItem('marka-recarga', m[1]);
+    location.replace(location.pathname + '?v=' + encodeURIComponent(m[1]));
+  }catch(e){}
+}
 /* início: mês = mês corrente; se não houver nada lançado nele, o último com dados */
 (function init(){
   S.mes=hoje().slice(0,7); $('#mes').value=S.mes; S.autoMes=true;
   render();
   connect();
+  setTimeout(checaAtualizacao, 1500);
 })();
 </script>
 
