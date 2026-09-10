@@ -190,6 +190,7 @@ footer{max-width:1280px;margin:0 auto;padding:10px 20px 30px;font-size:11.5px;co
   <button data-v="fechamento">Fechamento do mês</button>
   <button data-v="rastreio">Rastreio de corretivas</button>
   <button data-v="efetivo">Efetivo</button>
+  <button data-v="whats">Status WhatsApp</button>
   <button data-v="equip">Equipamentos</button>
   <button data-v="sync">Sincronização</button>
 </div></nav>
@@ -311,6 +312,24 @@ footer{max-width:1280px;margin:0 auto;padding:10px 20px 30px;font-size:11.5px;co
   <div class="eq-cards" id="r-cards"></div>
 </section>
 
+<!-- ============ STATUS WHATSAPP ============ -->
+<section class="view" id="v-whats" hidden>
+  <div class="grid">
+    <div class="card c7">
+      <div class="card-h"><h2>Mensagem de equipamentos parados</h2><span class="sub" id="w-n"></span></div>
+      <div class="sub">Lista somente as paradas em aberto, ou seja, sem data de retorno lançada. É o que está fora agora. Copie e cole no grupo.</div>
+      <div class="form">
+        <div class="f f12"><label>Prévia da mensagem</label><textarea id="w-txt" rows="20" style="font-family:ui-monospace,Consolas,monospace;font-size:13px"></textarea></div>
+        <div class="f f12 actions"><button class="btn" id="w-copy">Copiar mensagem</button><button class="btn sec" id="w-wa">Abrir no WhatsApp</button><button class="btn ghost" id="w-upd">Atualizar</button><span class="hint" id="w-msg"></span></div>
+      </div>
+    </div>
+    <div class="card c5">
+      <div class="card-h"><h2>O que entra na mensagem</h2></div>
+      <div class="list" id="w-list"></div>
+    </div>
+  </div>
+</section>
+
 <!-- ============ EQUIPAMENTOS ============ -->
 <section class="view" id="v-equip" hidden>
   <div class="grid">
@@ -339,7 +358,7 @@ footer{max-width:1280px;margin:0 auto;padding:10px 20px 30px;font-size:11.5px;co
       <div class="form" style="margin-top:16px">
         <div class="f f12"><label>URL do projeto Supabase</label><input id="sy-url" placeholder="https://xxxxxxxx.supabase.co"></div>
         <div class="f f12"><label>Chave anon (public)</label><input id="sy-key" placeholder="eyJhbGci..."><span class="hint">A chave anon é pública por natureza. Nunca cole aqui a service_role.</span></div>
-        <div class="f f12 actions"><button class="btn" id="sy-save">Conectar</button><button class="btn ghost" id="sy-test">Testar conexão</button><button class="btn danger" id="sy-off" hidden>Desconectar</button><span class="hint" id="sy-msg"></span></div>
+        <div class="f f12 actions"><button class="btn" id="sy-save">Conectar</button><button class="btn ghost" id="sy-test">Testar conexão</button><button class="btn sec" id="sy-link" hidden>Copiar link de acesso da equipe</button><button class="btn danger" id="sy-off" hidden>Desconectar</button><span class="hint" id="sy-msg"></span></div>
       </div>
     </div>
     <div class="card c5">
@@ -381,7 +400,7 @@ const ITENS = ['Sistema hidráulico','Sistema elétrico','Motor','Transmissão /
 const TIPOS_PADRAO = ['Caminhão Basculante','Caminhão Betoneira','Caminhão Carroceria','Caminhão Munck','Caminhão Pipa','Cavalo Mecânico','Cavalo Mecânico + Prancha','Escavadeira Hidráulica','Escavadeira Hidráulica (com rompedor)','Motoniveladora','Pá Carregadeira','Retroescavadeira','Rolo Compactador','Trator de Esteira','Trator Agrícola','Plataforma Elevatória','Gerador'];
 const FUNCOES_PADRAO = ['Motorista','Operador de Máquina','Operador de Munck','Ajudante','Outros'];
 const OBRAS_PADRAO = ['Obras Civis','Trem de Passageiros','Compartilhado'];
-const VERSAO = '2026-09-09d';
+const VERSAO = '2026-09-10b';
 const META = 85;
 
 /* =================== utilidades =================== */
@@ -435,7 +454,23 @@ create policy "escrita publica" on ${SB_TABELA} for insert with check (true);
 create policy "atualizacao publica" on ${SB_TABELA} for update using (true) with check (true);
 create policy "exclusao publica" on ${SB_TABELA} for delete using (true);`;
 let SB=null;
-function sbLoad(){ try{ const raw=localStorage.getItem(SB_KEY); if(raw){const c=JSON.parse(raw); if(c.url&&c.key) return c;} }catch(e){} return null; }
+function b64e(o){ return btoa(unescape(encodeURIComponent(JSON.stringify(o)))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); }
+function b64d(t){ t=t.replace(/-/g,'+').replace(/_/g,'/'); while(t.length%4) t+='='; return JSON.parse(decodeURIComponent(escape(atob(t)))); }
+function linkConvite(){ if(!SB) return ''; return location.origin+location.pathname+'#cfg='+b64e({u:SB.url,k:SB.key}); }
+/* link de convite: #cfg=... configura o banco automaticamente e some da barra de endereco */
+function sbDoHash(){
+  const m=(location.hash||'').match(/^#cfg=(.+)$/);
+  if(!m) return null;
+  try{
+    const c=b64d(m[1]);
+    if(!c.u||!c.k) return null;
+    const cfg={url:String(c.u).replace(/\/+$/,''),key:String(c.k)};
+    try{ localStorage.setItem(SB_KEY,JSON.stringify(cfg)); }catch(e){}
+    try{ history.replaceState(null,'',location.pathname+location.search); }catch(e){}
+    return cfg;
+  }catch(e){ return null; }
+}
+function sbLoad(){ const h=sbDoHash(); if(h) return h; try{ const raw=localStorage.getItem(SB_KEY); if(raw){const c=JSON.parse(raw); if(c.url&&c.key) return c;} }catch(e){} return null; }
 function sbHead(){ return {apikey:SB.key,Authorization:'Bearer '+SB.key,'Content-Type':'application/json'}; }
 async function sbGetAll(){
   const r=await fetch(`${SB.url}/rest/v1/${SB_TABELA}?select=id,tipo,dados`,{headers:sbHead()});
@@ -629,6 +664,7 @@ function render(){
   if (S.view==='fechamento') renderFech(calcMes(fechMes()));
   if (S.view==='rastreio') renderRastreio();
   if (S.view==='efetivo') renderEfetivo();
+  if (S.view==='whats') renderWhats();
   if (S.view==='equip') renderEquip();
   if (S.view==='sync') renderSync();
   const ex = Object.values(S.eq).some(e=>e.exemplo) ? ' · Dados de exemplo carregados para demonstração: substitua pelo cadastro real.' : '';
@@ -815,6 +851,71 @@ $('#p-save').onclick=async()=>{
   const per=periodo(); if(partes[0].mes<per.ini||partes[0].mes>per.fim){S.modo='mes';S.mes=partes[0].mes;$('#mes').value=S.mes;} render();
 };
 
+/* ---------- status para WhatsApp ---------- */
+/* parada em aberto pode ter sido dividida por mes: volta ate o inicio real da parada */
+function inicioReal(tag, ini, motivo){
+  let cur=ini;
+  for(let i=0;i<36;i++){
+    const d=new Date(cur+'T12:00:00'); d.setDate(d.getDate()-1);
+    const ant=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    const f=S.fech[tag+'_'+ant.slice(0,7)];
+    const p=f&&(f.paradas||[]).find(x=>x.fim===ant&&x.motivo===motivo);
+    if(!p) return cur;
+    cur=p.ini;
+  }
+  return cur;
+}
+function diasDesde(iso){
+  const a=new Date(iso+'T12:00:00'), b=new Date(hoje()+'T12:00:00');
+  return Math.max(1, Math.round((b-a)/86400000)+1);
+}
+function paradasAbertas(){
+  const out=[];
+  Object.values(S.fech).forEach(f=>(f.paradas||[]).forEach(p=>{
+    if(p.fim) return;
+    const e=S.eq[f.tag]; if(!e) return;
+    const ini=inicioReal(f.tag,p.ini,p.motivo);
+    out.push({tag:f.tag, tipo:e.tipo||'', obra:e.obra||'', local:e.local||'', motivo:p.motivo, item:p.item||'', desc:p.desc||'', oper:p.oper||'', ini, dias:diasDesde(ini)});
+  }));
+  return out.sort((a,b)=>b.dias-a.dias || a.tag.localeCompare(b.tag));
+}
+function textoWhats(){
+  const L=paradasAbertas();
+  const d=new Date();
+  const hh=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+  const frota=Object.values(S.eq).filter(e=>e.ativo!==false).length;
+  let t='*MARKA ENGENHARIA - EQUIPAMENTOS PARADOS*\n';
+  t+='Posição: '+fmtD(hoje())+' às '+hh+'\n';
+  t+='------------------------------\n';
+  if(!L.length){ t+='\nNenhum equipamento parado no momento.\n'; }
+  L.forEach((p,i)=>{
+    t+='\n'+(i+1)+') *'+p.tag+'*'+(p.tipo?' - '+p.tipo:'')+'\n';
+    if(p.local||p.obra) t+='Local: '+[p.local,p.obra].filter(Boolean).join(' / ')+'\n';
+    t+='Causa: '+p.motivo+(p.item?' - '+p.item:'')+'\n';
+    if(p.desc) t+='Detalhe: '+p.desc+'\n';
+    t+='Parado desde: '+fmtD(p.ini)+'  ('+p.dias+(p.dias===1?' dia':' dias')+' fora)\n';
+    if(p.oper) t+='Operador: '+p.oper+'\n';
+  });
+  t+='\n------------------------------\n';
+  t+='Total: '+L.length+' de '+frota+' equipamento(s) da frota parado(s).\n';
+  const soma=L.reduce((a,b)=>a+b.dias,0);
+  if(L.length) t+='Dias parados acumulados: '+soma+'.\n';
+  return t;
+}
+function renderWhats(){
+  const L=paradasAbertas();
+  $('#w-n').textContent=L.length+' parada(s) em aberto';
+  $('#w-txt').value=textoWhats();
+  $('#w-list').innerHTML=L.length?L.map(p=>`<div class="row"><span class="chip" style="background:${MCOR[p.motivo]?.hex||'#5F8A2E'}">${esc(p.motivo.replace('Manutenção ',''))}</span>
+    <div class="d"><b class="tag">${esc(p.tag)}</b>${p.item?' · <b>'+esc(p.item)+'</b>':''}<br><time>desde ${fmtD(p.ini)} · ${p.dias} dia(s) fora${p.local?' · '+esc(p.local):''}</time></div>
+    <b class="num">${p.dias}d</b></div>`).join(''):'<div class="empty">Nenhuma parada em aberto. Toda parada lançada já tem data de retorno.</div>';
+}
+$('#w-upd').onclick=()=>{ renderWhats(); toast('Mensagem atualizada'); };
+$('#w-copy').onclick=async()=>{ const t=$('#w-txt'); const m=$('#w-msg');
+  try{ await navigator.clipboard.writeText(t.value); m.textContent='Copiado. Cole no grupo.'; toast('Mensagem copiada'); }
+  catch(e){ t.select(); try{ document.execCommand('copy'); m.textContent='Copiado.'; }catch(err){ m.textContent='Selecione o texto e copie manualmente.'; } } };
+$('#w-wa').onclick=()=>{ window.open('https://wa.me/?text='+encodeURIComponent($('#w-txt').value),'_blank'); };
+
 /* ---------- fechamento ---------- */
 function fechMes(){ return S.modo==='mes' ? S.mes : periodo().fim; }
 function renderFech(R){
@@ -962,7 +1063,7 @@ function renderSync(){
   else if(SB) $('#sy-status').innerHTML=box(S.erro?'var(--crit)':'var(--ok)', S.erro?'Conectado, mas com erro':'Compartilhado via Supabase', S.erro?esc(S.erro):`Todos que abrirem o link veem os mesmos lançamentos. Atualiza sozinho a cada 25 segundos.<br><span style="color:var(--ink-3)">${esc(SB.url)}</span>`);
   else $('#sy-status').innerHTML=box('var(--gold)','Salvo só neste navegador','Funciona offline, mas cada pessoa tem a própria base e nada é compartilhado. Limpar os dados do navegador apaga tudo. Conecte um banco abaixo para a equipe usar junto.');
   $('#sy-status').innerHTML+=`<div class="sub" style="margin-top:6px">Base atual: ${nEq} equipamento(s), ${Object.keys(S.ope).length} operador(es) e ${nFe} mês(es) de fechamento.</div>`;
-  if(SB){ $('#sy-url').value=SB.url; $('#sy-key').value=SB.key; $('#sy-off').hidden=false; } else $('#sy-off').hidden=true;
+  if(SB){ $('#sy-url').value=SB.url; $('#sy-key').value=SB.key; $('#sy-off').hidden=false; $('#sy-link').hidden=false; } else { $('#sy-off').hidden=true; $('#sy-link').hidden=true; }
   $('#sy-url').disabled=S.backend==='db'; $('#sy-key').disabled=S.backend==='db'; $('#sy-save').disabled=S.backend==='db';
 }
 function lerCfg(){ const url=$('#sy-url').value.trim().replace(/\/+$/,''), key=$('#sy-key').value.trim(); return {url,key}; }
@@ -986,6 +1087,10 @@ $('#sy-save').onclick=async()=>{ const c=lerCfg(); const m=$('#sy-msg'); if(!c.u
   await sbSync(); clearInterval(S.timer); S.timer=setInterval(()=>sbSync(true),25000);
   m.textContent=''; toast('Conectado ao banco compartilhado'); render();
 };
+$('#sy-link').onclick=async()=>{ const l=linkConvite(); if(!l) return;
+  const m=$('#sy-msg');
+  try{ await navigator.clipboard.writeText(l); toast('Link copiado. Mande no WhatsApp.'); m.textContent='Quem abrir esse link ja entra conectado ao banco da equipe.'; }
+  catch(e){ m.textContent=l; toast('Copie o link que apareceu abaixo dos botoes.'); } };
 $('#sy-off').onclick=()=>{ if(!confirm('Desconectar? O app volta a salvar só neste navegador. Os dados no banco continuam lá.')) return;
   SB=null; try{ localStorage.removeItem(SB_KEY); }catch(e){} clearInterval(S.timer); S.backend='local'; saveLocal(); marcaSync('','só neste aparelho'); render(); };
 $('#sy-copy').onclick=()=>{ const t=$('#sy-sql'); t.select(); try{ document.execCommand('copy'); toast('SQL copiado'); }catch(e){ toast('Selecione e copie manualmente'); } };
