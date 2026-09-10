@@ -396,11 +396,14 @@ const MOTIVOS = [
   {k:'Outros', c:'var(--c-out)', hex:'#5F8A2E', resp:'Coordenação'},
 ];
 const MCOR = Object.fromEntries(MOTIVOS.map(m=>[m.k,m]));
+const mot = p => (p && p.motivo) ? String(p.motivo) : 'Outros';
+const motCurto = p => mot(p).replace('Manutenção ','');
+const motHex = p => (MCOR[mot(p)]||{}).hex || '#5F8A2E';
 const ITENS = ['Sistema hidráulico','Sistema elétrico','Motor','Transmissão / embreagem','Freios','Pneus / rodado','Material rodante','Ar condicionado','Chassi / estrutura','Caçamba / implemento','Bomba d\'água','Sistema de arrefecimento','Outros'];
 const TIPOS_PADRAO = ['Caminhão Basculante','Caminhão Betoneira','Caminhão Carroceria','Caminhão Munck','Caminhão Pipa','Cavalo Mecânico','Cavalo Mecânico + Prancha','Escavadeira Hidráulica','Escavadeira Hidráulica (com rompedor)','Motoniveladora','Pá Carregadeira','Retroescavadeira','Rolo Compactador','Trator de Esteira','Trator Agrícola','Plataforma Elevatória','Gerador'];
 const FUNCOES_PADRAO = ['Motorista','Operador de Máquina','Operador de Munck','Ajudante','Outros'];
 const OBRAS_PADRAO = ['Obras Civis','Trem de Passageiros','Compartilhado'];
-const VERSAO = '2026-09-10b';
+const VERSAO = '2026-09-10c';
 const META = 85;
 
 /* =================== utilidades =================== */
@@ -491,8 +494,12 @@ function sbApply(rows){
 }
 async function sbSync(silencioso){
   if(!SB) return;
-  try{ sbApply(await sbGetAll()); S.erro=null; marcaSync('on','sincronizado'); render(); }
-  catch(err){ S.erro=err.message; marcaSync('off','sem conexão'); if(!silencioso) toast('Falha ao sincronizar: '+err.message); }
+  let linhas;
+  try{ linhas=await sbGetAll(); }
+  catch(err){ S.erro=err.message; marcaSync('off','sem conexão'); if(!silencioso) toast('Falha ao sincronizar: '+err.message); return; }
+  S.erro=null; marcaSync('on','sincronizado');
+  try{ sbApply(linhas); render(); }
+  catch(err){ console.error(err); toast('Erro ao desenhar a tela: '+err.message); }
 }
 function marcaSync(cls,txt){ const s=$('#sync'); if(!s) return; s.className='sync'+(cls==='on'?' on':''); s.innerHTML=`<i></i><span>${esc(txt)}</span>`; }
 
@@ -798,7 +805,7 @@ function renderParada(R){
   if(cur2) so.value=cur2;
   const lista=paradasPeriodo();
   $('#p-count').textContent=`${lista.length} registro(s) · ${R.per.rotulo}`;
-  $('#p-list').innerHTML=lista.length?lista.map(p=>`<div class="row"><span class="chip" style="background:${MCOR[p.motivo]?.hex||'#5F8A2E'}">${esc(p.motivo.replace('Manutenção ',''))}</span>
+  $('#p-list').innerHTML=lista.length?lista.map(p=>`<div class="row"><span class="chip" style="background:${motHex(p)}">${esc(motCurto(p))}</span>
     <div class="d"><b class="tag">${esc(p.tag)}</b> · ${p.item?'<b>'+esc(p.item)+'</b> · ':''}${esc(p.desc||'')}<br><time>${fmtD(p.ini)} → ${p.fim?fmtD(p.fim):'em aberto'} · ${p.dias} dia(s)${p.oper?' · op. '+esc(p.oper):''} · lançou ${esc(p.por||'')}</time></div>
     <span class="acoes"><button class="btn sec sm" data-ped="${esc(p.tag)}|${esc(p.mes)}|${esc(p.id)}">Editar</button><button class="btn danger sm" data-del="${esc(p.tag)}|${esc(p.mes)}|${esc(p.id)}">Excluir</button></span></div>`).join(''):'<div class="empty">Nenhuma parada lançada neste mês.</div>';
   $('#p-list').querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{const [tag,mes,id]=b.dataset.del.split('|'); const f=getFech(tag,mes); putFech({...f,paradas:(f.paradas||[]).filter(p=>p.id!==id)}); if(S.editPar&&S.editPar.id===id) resetParForm(); toast('Parada excluída');});
@@ -829,14 +836,18 @@ function resetParForm(){
 }
 $('#p-cancel').onclick=()=>{resetParForm(); render();};
 $('#p-save').onclick=async()=>{
+  const btn=$('#p-save'); if(btn.disabled) return;
   const tag=$('#p-tag').value, por=$('#p-por').value.trim(), oper=$('#p-oper').value.trim(), ini=$('#p-ini').value, fim=$('#p-fim').value, desc=$('#p-desc').value.trim();
   const msg=$('#p-msg'); msg.textContent='';
+  const motivo=S.motivo;
   if(!tag) return msg.textContent='Cadastre um equipamento primeiro.';
-  if(!S.motivo) return msg.textContent='Escolha o motivo.';
+  if(!motivo) return msg.textContent='Escolha o motivo.';
   if(!ini) return msg.textContent='Informe a data de início.';
   if(fim && fim<ini) return msg.textContent='Retorno anterior ao início.';
   if(!por) return msg.textContent='Informe quem está lançando.';
-  const item=S.motivo==='Manutenção Corretiva'?$('#p-item').value:null;
+  const item=motivo==='Manutenção Corretiva'?$('#p-item').value:null;
+  btn.disabled=true; const rotulo=btn.textContent; btn.textContent='Salvando...';
+  try{
   try{localStorage.setItem('marka-disp-por',por);}catch(e){}
   // divide por mês
   const partes=[]; let a=ini; const end=fim||hoje();
@@ -845,10 +856,17 @@ $('#p-save').onclick=async()=>{
   if(!fim) partes[partes.length-1].fim=null;
   const ed=S.editPar;
   if(ed){ const fo=getFech(ed.tag,ed.mes); await putFech({...fo,paradas:(fo.paradas||[]).filter(x=>x.id!==ed.id)}); }
-  for(const pt of partes){ const f=getFech(tag,pt.mes); await putFech({...f,paradas:[...(f.paradas||[]),{id:uid(),motivo:S.motivo,item,ini:pt.ini,fim:pt.fim,desc,oper:oper||null,por,em:new Date().toISOString()}]}); }
+  for(const pt of partes){
+    const f=getFech(tag,pt.mes);
+    const jaTem=(f.paradas||[]).some(x=>x.motivo===motivo&&x.ini===pt.ini&&x.fim===pt.fim&&(x.desc||'')===desc&&(x.oper||null)===(oper||null));
+    if(jaTem) continue;
+    await putFech({...f,paradas:[...(f.paradas||[]),{id:uid(),motivo,item,ini:pt.ini,fim:pt.fim,desc,oper:oper||null,por,em:new Date().toISOString()}]});
+  }
   toast(ed?`Parada de ${tag} atualizada`:`Parada registrada em ${tag}${partes.length>1?' ('+partes.length+' meses)':''}`);
   resetParForm();
   const per=periodo(); if(partes[0].mes<per.ini||partes[0].mes>per.fim){S.modo='mes';S.mes=partes[0].mes;$('#mes').value=S.mes;} render();
+  }catch(e){ msg.textContent='Falha ao registrar: '+e.message; }
+  finally{ btn.disabled=false; btn.textContent=rotulo; }
 };
 
 /* ---------- status para WhatsApp ---------- */
@@ -906,7 +924,7 @@ function renderWhats(){
   const L=paradasAbertas();
   $('#w-n').textContent=L.length+' parada(s) em aberto';
   $('#w-txt').value=textoWhats();
-  $('#w-list').innerHTML=L.length?L.map(p=>`<div class="row"><span class="chip" style="background:${MCOR[p.motivo]?.hex||'#5F8A2E'}">${esc(p.motivo.replace('Manutenção ',''))}</span>
+  $('#w-list').innerHTML=L.length?L.map(p=>`<div class="row"><span class="chip" style="background:${motHex(p)}">${esc(motCurto(p))}</span>
     <div class="d"><b class="tag">${esc(p.tag)}</b>${p.item?' · <b>'+esc(p.item)+'</b>':''}<br><time>desde ${fmtD(p.ini)} · ${p.dias} dia(s) fora${p.local?' · '+esc(p.local):''}</time></div>
     <b class="num">${p.dias}d</b></div>`).join(''):'<div class="empty">Nenhuma parada em aberto. Toda parada lançada já tem data de retorno.</div>';
 }
@@ -996,7 +1014,7 @@ function renderFicha(R){
   $('#fi-itens').innerHTML=items.map(([k,v],i)=>`<div class="item-bar ${i===0&&v.n>=2?'top-item':''}"><div><span class="lbl">${esc(k)}</span><div class="bar"><i style="width:${v.n/imx*100}%"></i></div></div><span class="n">${v.n}× · ${v.d} d</span></div>`).join('')||'<div class="empty">Nenhuma corretiva no período.</div>';
   const hist=paradasPeriodo(p=>p.tag===e.tag);
   $('#fi-hist-n').textContent=`${hist.length} registro(s)`;
-  $('#fi-tb').innerHTML=`<thead><tr><th>Início</th><th>Retorno</th><th class="n">Dias</th><th>Motivo</th><th>Item</th><th>Operador</th><th>Descrição</th><th>Lançou</th></tr></thead><tbody>`+(hist.map(p=>`<tr><td>${fmtD(p.ini)}</td><td>${p.fim?fmtD(p.fim):'<span class="pend">em aberto</span>'}</td><td class="n">${p.dias}</td><td><span class="chip" style="background:${MCOR[p.motivo]?.hex||'#5F8A2E'}">${esc(p.motivo.replace('Manutenção ',''))}</span></td><td>${esc(p.item||'')}</td><td>${esc(p.oper||'')}</td><td>${esc(p.desc||'')}</td><td style="color:var(--ink-3)">${esc(p.por||'')}</td></tr>`).join('')||'<tr><td colspan="8" class="pend">Sem paradas no período.</td></tr>')+'</tbody>';
+  $('#fi-tb').innerHTML=`<thead><tr><th>Início</th><th>Retorno</th><th class="n">Dias</th><th>Motivo</th><th>Item</th><th>Operador</th><th>Descrição</th><th>Lançou</th></tr></thead><tbody>`+(hist.map(p=>`<tr><td>${fmtD(p.ini)}</td><td>${p.fim?fmtD(p.fim):'<span class="pend">em aberto</span>'}</td><td class="n">${p.dias}</td><td><span class="chip" style="background:${motHex(p)}">${esc(motCurto(p))}</span></td><td>${esc(p.item||'')}</td><td>${esc(p.oper||'')}</td><td>${esc(p.desc||'')}</td><td style="color:var(--ink-3)">${esc(p.por||'')}</td></tr>`).join('')||'<tr><td colspan="8" class="pend">Sem paradas no período.</td></tr>')+'</tbody>';
 }
 $('#fi-tag').onchange=e=>{S.ftag=e.target.value; render();};
 
